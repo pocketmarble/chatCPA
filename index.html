@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chatCPA — GeLU vs 1-CPA</title>
+<style>
+:root{
+  --bg:#EFF2F4; --surface:#FDFDFE; --sunk:#E7ECF0;
+  --ink:#101C26; --ink-2:#46586A; --ink-3:#7B8C9A;
+  --rule:#CFD8DE; --rule-2:#DEE5EA;
+  --control:#0F6FB5; --cpa:#B8481F;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0E151C; --surface:#16202B; --sunk:#111A23;
+  --ink:#E2E9EF; --ink-2:#9FB1C0; --ink-3:#6B7F90;
+  --rule:#29384A; --rule-2:#223040;
+  --control:#3F97CF; --cpa:#D97434;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--ink);
+  font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+.app{height:100vh;display:grid;grid-template-rows:auto 1fr;gap:10px;padding:10px}
+header{display:flex;align-items:baseline;gap:14px}
+h1{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em}
+.meta{font:400 11px/1 ui-monospace,Menlo,monospace;color:var(--ink-3);letter-spacing:.04em}
+.meta b{color:var(--ink-2);font-weight:500}
+
+main{display:grid;grid-template-columns:330px 1fr;gap:10px;min-height:0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+  padding:11px 13px;min-height:0;display:flex;flex-direction:column}
+.card>h2{font:500 10.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 9px}
+
+aside{display:grid;grid-template-rows:auto auto 1fr;gap:10px;min-height:0}
+
+/* ---- controls ---- */
+.field{display:grid;gap:4px;margin-bottom:9px}
+.field:last-child{margin-bottom:0}
+label{font-size:11px;color:var(--ink-2);display:flex;justify-content:space-between;
+  align-items:baseline;gap:8px}
+label .val{font:500 12px ui-monospace,Menlo,monospace;color:var(--ink)}
+input[type=text],input[type=number],select{background:var(--sunk);color:var(--ink);
+  border:1px solid var(--rule);border-radius:2px;padding:5px 7px;font:inherit;width:100%}
+input[type=range]{width:100%;accent-color:var(--cpa);margin:0}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+button{background:var(--ink);color:var(--surface);border:0;border-radius:2px;
+  padding:7px 12px;font:500 12px inherit;cursor:pointer;width:100%}
+button:hover{opacity:.88}
+button:disabled{opacity:.4;cursor:default}
+button.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--rule)}
+:focus-visible{outline:2px solid var(--control);outline-offset:1px}
+
+/* ---- p0 panel ---- */
+.viz{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.viz svg{width:100%;height:auto;display:block}
+.caption{font-size:10.5px;line-height:1.45;color:var(--ink-3)}
+.dials{display:grid;gap:6px;margin-top:auto}
+.dial{display:grid;grid-template-columns:78px 1fr 46px;align-items:center;gap:8px;
+  font-size:10.5px;color:var(--ink-2)}
+.track{height:5px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.fill{height:100%;background:var(--cpa);border-radius:3px;transition:width .18s}
+.dial .n{text-align:right;font:500 11px ui-monospace,Menlo,monospace;color:var(--ink)}
+
+/* ---- outputs ---- */
+section{display:grid;grid-template-rows:1fr auto;gap:10px;min-height:0}
+.gens{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+.gen{min-height:0}
+.gen h2{display:flex;align-items:center;gap:6px}
+.swatch{width:9px;height:9px;border-radius:2px;flex:none}
+.gen .body{flex:1;min-height:0;overflow-y:auto;font:400 12.5px/1.6 ui-monospace,Menlo,monospace;
+  white-space:pre-wrap;word-break:break-word;color:var(--ink-2)}
+.gen .body .prompt{color:var(--ink-3)}
+.gen .body .new{color:var(--ink)}
+.gen .t{font:400 10px ui-monospace,Menlo,monospace;color:var(--ink-3);margin-left:auto}
+
+/* ---- metrics ---- */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--rule-2)}
+th:first-child,td:first-child{text-align:left;color:var(--ink-2);font-weight:400}
+thead th{font:500 10px ui-monospace,Menlo,monospace;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule)}
+tbody tr:last-child td{border-bottom:0}
+td.num{font:500 12px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+td.c{color:var(--control)} td.p{color:var(--cpa)}
+td.d{color:var(--ink-3);font-size:11px}
+.hs{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:8px;
+  padding-top:8px;border-top:1px solid var(--rule-2)}
+.hs .status{font:400 11px ui-monospace,Menlo,monospace;color:var(--ink-3)}
+.hs input{width:62px}
+.hs button{width:auto;padding:5px 11px;font-size:11px}
+.busy{color:var(--cpa)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>chatCPA</h1>
+    <span class="meta">GPT-2 124M · frozen · <b id="dev">…</b> · CG <b id="cg">…</b> steps
+      · layer <b id="lay">…</b> probed</span>
+  </header>
+
+  <main>
+    <aside>
+      <div class="card">
+        <h2>Prompt</h2>
+        <div class="field">
+          <input type="text" id="prompt" value="The auditory cortex identifies sources by">
+        </div>
+        <div class="row">
+          <div class="field"><label>tokens</label><input type="number" id="tokens" value="64" min="8" max="256" step="8"></div>
+          <div class="field"><label>temp</label><input type="number" id="temp" value="0.8" min="0.1" max="2" step="0.1"></div>
+          <div class="field"><label>top-k</label><input type="number" id="topk" value="50" min="0" max="200" step="10"></div>
+        </div>
+        <div class="field"><button id="gen">Generate both</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Knobs</h2>
+        <div class="field">
+          <label>α &nbsp;<span class="caption">blend · 0 = GeLU, 1 = pure 1-CPA</span>
+            <span class="val" id="aVal">0.30</span></label>
+          <input type="range" id="alpha" min="0" max="100" value="30">
+        </div>
+        <div class="field">
+          <label>p₀ <span class="caption">competition strength</span>
+            <span class="val" id="pVal">1.00</span></label>
+          <input type="range" id="p0" min="0" max="100" value="67">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Gate shape at this p₀</h2>
+        <div class="viz">
+          <svg id="scatter" viewBox="0 0 300 190" preserveAspectRatio="xMidYMid meet"
+               role="img" aria-label="Scatter of pre-activation against gated output, with the GeLU curve overlaid."></svg>
+          <p class="caption">GeLU is a curve — one input, one output. 1-CPA is not:
+            units with the same pre-activation get different gates because their
+            competition differs. That vertical spread is the mechanism.</p>
+          <div class="dials">
+            <div class="dial"><span>vs template</span><div class="track"><div class="fill" id="cosFill"></div></div><span class="n" id="cosN">—</span></div>
+            <div class="dial"><span>θ negative</span><div class="track"><div class="fill" id="negFill"></div></div><span class="n" id="negN">—</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section>
+      <div class="gens">
+        <div class="card gen">
+          <h2><span class="swatch" style="background:var(--control)"></span>GeLU · control
+            <span class="t" id="tc"></span></h2>
+          <div class="body" id="outC"><span class="prompt">Press Generate.</span></div>
+        </div>
+        <div class="card gen">
+          <h2><span class="swatch" style="background:var(--cpa)"></span>1-CPA
+            <span class="t" id="tp"></span></h2>
+          <div class="body" id="outP"><span class="prompt">Press Generate.</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Benchmarks</h2>
+        <table>
+          <thead><tr><th>metric</th><th>GeLU</th><th>1-CPA</th><th>Δ</th></tr></thead>
+          <tbody>
+            <tr><td>cross-entropy</td><td class="num c" id="mLc">—</td><td class="num p" id="mLp">—</td><td class="num d" id="mLd"></td></tr>
+            <tr><td>perplexity</td><td class="num c" id="mPc">—</td><td class="num p" id="mPp">—</td><td class="num d" id="mPd"></td></tr>
+            <tr><td>next-token top-1</td><td class="num c" id="mAc">—</td><td class="num p" id="mAp">—</td><td class="num d" id="mAd"></td></tr>
+            <tr><td>hellaswag</td><td class="num c" id="mHc">—</td><td class="num p" id="mHp">—</td><td class="num d" id="mHd"></td></tr>
+          </tbody>
+        </table>
+        <div class="hs">
+          <span class="status" id="hsStatus">held-out prose updates live · hellaswag is on demand</span>
+          <input type="number" id="hsN" value="50" min="10" max="500" step="10" class="mono">
+          <button class="ghost" id="hsRun">Run hellaswag</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const post = (path, body) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify(body)}).then(r => r.json());
+
+// p0 slider is logarithmic: the useful range spans two orders of magnitude.
+const p0of = v => Math.pow(10, -2 + (v / 100) * 3);       // 0.01 .. 10
+const knobs = () => ({alpha: +$('alpha').value / 100, p0: p0of(+$('p0').value)});
+
+function showKnobs(){
+  $('aVal').textContent = (+$('alpha').value / 100).toFixed(2);
+  $('pVal').textContent = p0of(+$('p0').value).toFixed(2);
+}
+
+// ---- the gate-shape plot -------------------------------------------------
+const gelu = x => 0.5 * x * (1 + Math.tanh(Math.sqrt(2/Math.PI) * (x + 0.044715*x**3)));
+
+function drawScatter(points){
+  const W = 300, H = 190, L = 30, R = 6, T = 8, B = 20;
+  const svg = $('scatter');
+  if(!points || !points.length){ svg.innerHTML = ''; return; }
+  // symmetric domain from a high percentile, so a few outliers cannot flatten it
+  const q = (arr, p) => arr.slice().sort((a,b)=>a-b)[Math.floor((arr.length-1)*p)];
+  const ax = q(points.map(p => Math.abs(p[0])), 0.98) || 1;
+  const ay = q(points.map(p => Math.abs(p[1])), 0.99) || 1;   // scale to the gate,
+                                                             // not to GeLU's tail
+  const X = x => L + (x/ax/2 + 0.5) * (W-L-R);
+  const Y = y => H - B - (y/ay/2 + 0.5) * (H-T-B);
+  const cs = getComputedStyle(document.body);
+  const ink3 = cs.getPropertyValue('--ink-3'), rule = cs.getPropertyValue('--rule-2');
+  const ctl = cs.getPropertyValue('--control'), cpa = cs.getPropertyValue('--cpa');
+  let s = '';
+  s += `<line x1="${L}" y1="${Y(0)}" x2="${W-R}" y2="${Y(0)}" stroke="${rule}"/>`;
+  s += `<line x1="${X(0)}" y1="${T}" x2="${X(0)}" y2="${H-B}" stroke="${rule}"/>`;
+  for(const [v, lab, anc] of [[ax,'+'+ax.toFixed(1),'end'], [-ax,'−'+ax.toFixed(1),'start']])
+    s += `<text x="${X(v)}" y="${H-7}" fill="${ink3}" font-size="9" text-anchor="${anc}"
+           font-family="ui-monospace,Menlo,monospace">${lab}</text>`;
+  s += `<text x="${L-4}" y="${Y(ay)+3}" fill="${ink3}" font-size="9" text-anchor="end"
+         font-family="ui-monospace,Menlo,monospace">${ay.toFixed(1)}</text>`;
+  s += `<text x="4" y="${T+8}" fill="${ink3}" font-size="9"
+         font-family="ui-monospace,Menlo,monospace">h</text>`;
+  s += `<text x="${W-R}" y="${Y(0)-5}" fill="${ink3}" font-size="9" text-anchor="end"
+         font-family="ui-monospace,Menlo,monospace">c</text>`;
+  // GeLU reference curve
+  let d = '', pen = false;
+  for(let i = 0; i <= 120; i++){
+    const x = -ax + (2*ax) * i/120, y = gelu(x);
+    if(Math.abs(y) > ay){ pen = false; continue; }
+    d += (pen ? 'L' : 'M') + X(x).toFixed(1) + ',' + Y(y).toFixed(1);
+    pen = true;
+  }
+  s += `<path d="${d}" fill="none" stroke="${ctl}" stroke-width="1.6"/>`;
+  for(const [x, y] of points)
+    s += `<circle cx="${X(x).toFixed(1)}" cy="${Y(y).toFixed(1)}" r="1.5"
+           fill="${cpa}" fill-opacity="0.4"/>`;
+  svg.innerHTML = s;
+}
+
+// ---- live metrics --------------------------------------------------------
+const fmt = (v, n=3) => v == null ? '—' : (+v).toFixed(n);
+function delta(id, a, b, n=3, pct=false){
+  if(a == null || b == null){ $(id).textContent = ''; return; }
+  const d = b - a;
+  $(id).textContent = (d >= 0 ? '+' : '') + (pct ? (d*100).toFixed(1)+'pp' : d.toFixed(n));
+}
+let hsScores = {control:null, cpa:null};
+
+async function refresh(){
+  showKnobs();
+  const r = await post('/metrics', knobs());
+  if(r.error){ $('hsStatus').textContent = r.error; return; }
+  $('lay').textContent = r.layer;
+  $('mLc').textContent = fmt(r.control.loss, 3); $('mLp').textContent = fmt(r.cpa.loss, 3);
+  $('mPc').textContent = fmt(r.control.ppl, 1);  $('mPp').textContent = fmt(r.cpa.ppl, 1);
+  $('mAc').textContent = (r.control.acc*100).toFixed(1)+'%';
+  $('mAp').textContent = (r.cpa.acc*100).toFixed(1)+'%';
+  delta('mLd', r.control.loss, r.cpa.loss, 3);
+  delta('mPd', r.control.ppl, r.cpa.ppl, 1);
+  delta('mAd', r.control.acc, r.cpa.acc, 3, true);
+  const d = r.diag || {};
+  // cos(theta, c^2) = 1 means no competition at all; show distance from that
+  const comp = d.cos == null ? 0 : Math.max(0, Math.min(1, (1 - d.cos) / 0.5));
+  $('cosFill').style.width = (comp*100).toFixed(0)+'%';
+  $('cosN').textContent = d.cos == null ? '—' : d.cos.toFixed(3);
+  $('negFill').style.width = ((d.neg||0)*100).toFixed(0)+'%';
+  $('negN').textContent = d.neg == null ? '—' : (d.neg*100).toFixed(0)+'%';
+  drawScatter(r.points);
+}
+
+let timer = null;
+const debounce = () => { showKnobs(); clearTimeout(timer); timer = setTimeout(refresh, 260); };
+$('alpha').addEventListener('input', debounce);
+$('p0').addEventListener('input', debounce);
+
+// ---- generation ----------------------------------------------------------
+$('gen').addEventListener('click', async () => {
+  const b = $('gen'); b.disabled = true; b.textContent = 'Generating…';
+  $('outC').innerHTML = $('outP').innerHTML = '<span class="prompt">running…</span>';
+  const r = await post('/generate', {...knobs(), prompt: $('prompt').value,
+    tokens: +$('tokens').value, temp: +$('temp').value, top_k: +$('topk').value});
+  if(r.error){ $('outC').textContent = r.error; }
+  else{
+    const render = (el, o, t) => {
+      const head = o.text.slice(0, o.text.length - o.completion.length);
+      el.innerHTML = `<span class="prompt">${esc(head)}</span><span class="new">${esc(o.completion)}</span>`;
+      $(t).textContent = o.secs + 's';
+    };
+    render($('outC'), r.control, 'tc'); render($('outP'), r.cpa, 'tp');
+  }
+  b.disabled = false; b.textContent = 'Generate both';
+});
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+// ---- hellaswag (slow, polled) -------------------------------------------
+$('hsRun').addEventListener('click', async () => {
+  const r = await post('/hellaswag', {...knobs(), limit: +$('hsN').value});
+  if(r.error){ $('hsStatus').textContent = r.error; return; }
+  $('hsRun').disabled = true;
+  $('hsStatus').className = 'status busy';
+  const poll = setInterval(async () => {
+    const j = await (await fetch('/progress')).json();
+    if(j.error){ $('hsStatus').textContent = j.error; }
+    else $('hsStatus').textContent =
+      `${j.which} ${j.step}/${j.total} · running acc ${(j.acc*100).toFixed(1)}%`;
+    if(j.control != null) $('mHc').textContent = (j.control*100).toFixed(1)+'%';
+    if(j.cpa != null) $('mHp').textContent = (j.cpa*100).toFixed(1)+'%';
+    if(j.control != null && j.cpa != null) delta('mHd', j.control, j.cpa, 3, true);
+    if(j.done){
+      clearInterval(poll); $('hsRun').disabled = false;
+      $('hsStatus').className = 'status';
+      if(!j.error) $('hsStatus').textContent = `done · ${j.total} examples each`;
+    }
+  }, 500);
+});
+
+// ---- boot ---------------------------------------------------------------
+fetch('/config').then(r => r.json()).then(c => {
+  $('dev').textContent = c.device; $('cg').textContent = c.cg_iters;
+});
+refresh();
+</script>
+</body>
+</html>
